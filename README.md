@@ -1,4 +1,4 @@
-# Paper Piano
+# Virtual Piano using hand geature
 
 A web-based piano application that lets you play piano using your fingers virtually in air. This project is built with HTML, CSS, and JavaScript, and can be easily deployed to any static web hosting service.
 
