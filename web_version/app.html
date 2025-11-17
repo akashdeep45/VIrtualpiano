@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+    <script type="module" src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <button id="sidebarToggle" class="sidebar-toggle" aria-controls="controlSidebar" aria-expanded="false">
+        ☰ Controls
+    </button>
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+    <aside id="controlSidebar" class="sidebar" aria-label="Piano control sidebar">
+        <div class="sidebar-header">
+            <h2>Control Center</h2>
+            <button id="sidebarClose" class="sidebar-close" aria-label="Close controls">×</button>
+        </div>
+        <div class="sidebar-body">
+            <section class="control-section">
+                <header>
+                    <span class="section-title">🎹 Piano Controls</span>
+                </header>
+                <div class="control-row">
+                    <button id="pianoDecrease" class="pill danger">−</button>
+                    <span id="pianoOctaves" class="value-pill">2.5 Octaves</span>
+                    <button id="pianoIncrease" class="pill success">+</button>
+                </div>
+                <div class="control-actions">
+                    <button id="pianoFlipH" class="pill secondary">🔄 Flip H</button>
+                    <button id="pianoFlipV" class="pill secondary">↕️ Flip V</button>
+                    <button id="pianoRotate" class="pill accent">🔄 Rotate</button>
+                    <button id="pianoReset" class="pill muted">↺ Reset</button>
+                </div>
+                <div class="slider-group">
+                    <label>Size: <span id="pianoSize">100%</span></label>
+                    <input type="range" id="pianoSizeSlider" min="50" max="200" step="5" value="100">
+                </div>
+                <div class="slider-group">
+                    <label>Position X: <span id="pianoPosX">0</span></label>
+                    <input type="range" id="pianoPosXSlider" min="-500" max="500" step="10" value="0">
+                </div>
+                <div class="slider-group">
+                    <label>Position Y: <span id="pianoPosY">0</span></label>
+                    <input type="range" id="pianoPosYSlider" min="-500" max="500" step="10" value="0">
+                </div>
+                <p class="tip-box">💡 Drag piano keys to reposition them!</p>
+            </section>
+            <section class="control-section">
+                <label>🖐️ Max Hands: <span id="hands-count">2</span></label>
+                <input type="range" id="maxHandsSlider" min="1" max="2" step="1" value="2">
+                <label>🔎 Detection Confidence: <span id="detect-conf">0.2</span> (Lower = More Sensitive)</label>
+                <input type="range" id="detectSlider" min="0.1" max="1" step="0.05" value="0.2">
+                <label>🎯 Tracking Confidence: <span id="track-conf">0.2</span> (Lower = More Sensitive)</label>
+                <input type="range" id="trackSlider" min="0.1" max="1" step="0.05" value="0.2">
+                <span class="tiny-txt"><i>✅ Now supports: Thumb + All 4 fingers (5 fingers per hand = 10 total!)</i></span>
+                <small class="helper-text">💡 Lower values = faster, more sensitive detection (optimized for fast playing)</small>
+            </section>
+            <section class="control-section">
+                <header>
+                    <span class="section-title">📷 Camera Source</span>
+                </header>
+                <label class="inline">
+                    <input type="radio" name="cameraSource" id="cameraLocal" value="local" checked>
+                    📹 Local Webcam
+                </label>
+                <label class="inline">
+                    <input type="radio" name="cameraSource" id="cameraMobile" value="mobile">
+                    📱 Mobile Camera (IP)
+                </label>
+                <div id="mobileCameraInput" class="camera-input">
+                    <input type="text" id="ipCameraUrl" placeholder="http://192.168.1.100:8080">
+                    <button id="connectMobileBtn" class="pill block">Connect</button>
+                    <button id="testUrlBtn" class="pill secondary block">Test URL in Browser</button>
+                    <small class="helper-text">
+                        <strong>Recommended: IP Webcam</strong> (works best!)<br>
+                        <strong>For IP Webcam:</strong> Enter base URL (e.g., http://192.168.1.100:8080)<br>
+                        <strong>For DroidCam:</strong> Enter full URL (e.g., http://192.168.1.4:4747/video)
+                    </small>
+                </div>
+            </section>
+            <section class="control-section">
+                <header>
+                    <span class="section-title">🔄 Camera Transform</span>
+                </header>
+                <label class="inline">
+                    <input type="checkbox" id="flipHorizontal" checked>
+                    🔄 Flip Horizontal (Mirror)
+                </label>
+                <label class="inline">
+                    <input type="checkbox" id="flipVertical">
+                    ↕️ Flip Vertical
+                </label>
+                <label class="inline">
+                    <input type="checkbox" id="rotate180">
+                    🔄 Rotate 180°
+                </label>
+            </section>
+        </div>
+    </aside>
+
+    <div class="main">
+        <div class="left">
+            <div class="video-box">
+                <video id="webcam" autoplay playsinline muted></video>
+                <canvas id="layout-canvas"></canvas>
+            </div>
+            <div class="btns">
+                <button id="dummy-layout">Play in the air</button>
+                <button id="capture-btn">Play on paper (1)</button>
+                <button id="make-mask" disabled>Like the mask? (2)</button>
+            </div> 
+        </div>
+        <div class="right">
+            <div class="out-images">
+                <div class="result-box">
+                    <img id="captured-img" alt="captured frame">
+                </div>
+                <div class="result-box">
+                    <canvas id="raw-canvas"></canvas>
+                </div>
+            </div>
+            <br>
+                <span class="note-display">Playing 🎵🎹: <span id="note-display"></span></span>
+            <br>
+        </div>
+    </div>
+    <footer class="app-footer">
+        <a href="/pianolayout.pdf" class="download-link" target="_blank" rel="noopener">
+            ⬇️ Download Paper Layout
+        </a>
+    </footer>
+</body>
+</html>

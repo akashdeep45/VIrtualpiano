@@ -1,0 +1,374 @@
+<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="canonical" href="https://virtualpiano.online/teclado/">
+
+<link rel="alternate" hreflang="en" href="https://virtualpiano.online/">
+<link rel="alternate" hreflang="es" href="https://virtualpiano.online/teclado/">
+<link rel="alternate" hreflang="ru" href="https://virtualpiano.online/pianino/">
+
+<title>Piano Virtual Online</title>
+<meta name="keywords" content="piano virtual, piano online, piano virtual online">
+<meta name="description" content="Piano virtual para tocar música online con el teclado de tu computadora, con tres octavas siempre disponibles y acceso completo a las siete octavas.">
+
+<script id="pubmax_init" src="js/aaw.virtualpiano.js" async=""></script>
+
+<link rel="icon" type="image/x-icon" sizes="32x32" href="images/favicon.ico">
+<link rel="icon" type="image/png" sizes="192x192" href="images/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="images/android-chrome-512x512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "VirtualPiano.Online",
+  "description": "Piano virtual para tocar música online con el teclado de tu computadora, con tres octavas siempre disponibles y acceso completo a las siete octavas.",
+  "url": "https://virtualpiano.online/teclado/",
+  "applicationCategory": "Music",
+  "image": "https://virtualpiano.online/icons/android-chrome-192x192.png",
+  "operatingSystem": "All",
+  "browserRequirements": "Requires JavaScript. Works best in modern browsers.",
+  "inLanguage": "es"
+}
+</script>
+
+<script>
+"use strict";
+const g_lang = 'es';
+const g_postdata = [];
+</script>
+
+<style>
+html { overflow-y: scroll; }
+
+:root { color-scheme: light; }
+body { background: white; color: black; }
+
+@media (prefers-color-scheme: dark)
+{
+	:root { color-scheme: dark; }
+	body { background: #111; color: #eee; }
+}
+
+body { font-family: Verdana, Arial; }
+
+nav.breadcrumb { text-align: left; line-height: 1.5; text-transform: capitalize; }
+nav.breadcrumb ol { list-style: none; padding: 0; margin: 0; }
+nav.breadcrumb ol li { display: inline-block; }
+nav.breadcrumb li+li::before{ content: ">"; margin: 0.25em; }
+
+div#largest_contentful_paint { display: block; }
+
+footer { border-top: 1px solid #999; padding-top: 0.5em; margin-top: 4em; line-height: 1.5; margin-bottom: 10rem; text-align: center; font-size: small; }
+footer address { display: inline; font-style: normal; }
+footer nav ul { list-style: none; padding: 0; margin: 0; }
+footer nav ul li { display: inline-block; }
+footer nav ul li+li::before{ content: "|"; margin: 0.25em; }
+
+footer div.amazon { margin-top: 1em; }
+body, figure { margin: 0; }
+
+header.motto
+{
+	width: max-content;
+	max-width: 100%;
+	margin: 0 auto;
+	text-align: center;
+}
+header.motto h1 { font-family: Arial; margin: 0; }
+header.motto nav { margin: 0; }
+header.motto p { margin-top: 0.5rem; }
+
+main header { font-size: xx-large; margin-top: 1em; }
+
+main
+{
+	margin: 0 10% 0 10%;
+	font-family: Arial;
+}
+
+main { font-family: Verdana; }
+
+
+@media (max-width: 767px)
+{
+	main header, header.motto h1 { font-size: 120%; margin: 0; font-family: Arial; font-weight: bold; }
+	#virtual-piano-widget figcaption { font-family: Arial; font-size: 150%; }
+	header, main { margin: 6px; }
+	main h2 { font-size: 120%; margin-top: 2em; }
+}
+
+p, ul { line-height: 1.5; }
+
+main section h2 { color: #555555; font-family: Arial; }
+
+@media (prefers-color-scheme: dark)
+{
+	main section h2 { color: #fff; }
+}
+
+.horizontal-ad
+{
+	display: flex;
+	justify-content: center;
+	margin: 2rem 0;
+}
+
+
+/* Generated sidebar CSS */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html{ overflow-y: scroll; }
+
+body { margin: 0; }
+
+#twocolumns{ display:flex; align-items: flex-start; justify-content: flex-start; gap: 0px; }
+
+#column1{ flex:0 1 100%; min-width:0; }   /* allow shrink; primary size = 100% */
+#column2{ flex:0 0 0; width:0; overflow:hidden; }
+
+/* 732 + 48 + 160 = 940px → 160px sidebar */
+@media (min-width: 940px){
+  #twocolumns{gap:48px;min-height:600px;}
+  #column1{ flex: 0 1 calc(100% - 48px - 160px); min-width:0; }
+  #column2{flex-basis:160px;width:160px;}
+}
+
+/* 732 + 48 + 300 = 1080px → 300px sidebar */
+@media (min-width: 1080px){
+  #twocolumns{gap:48px;min-height:600px;}
+  #column1{ flex:0 1 calc(100% - 48px - 300px); min-width:0; }
+  #column2{flex-basis:300px;width:300px;}
+}
+
+/* Content safety */
+#column1 img{max-width:100%;height:auto;}
+#column1{overflow-wrap:anywhere;}
+</style>
+</head>
+
+<body>
+
+<div id="twocolumns">
+<div id="column1">
+
+<header class="motto">
+  <h1>Piano Virtual Online</h1>
+  <nav>con recursos interactivos de <a href="/music-theory/">teoría musical</a></nav>
+  <p>Principiantes y compositores pueden tocar música más allá de los límites de su propia destreza manual.</p>
+</header>
+
+<figure id="virtual-piano-widget">
+
+<script src="svgpiano.php"></script>
+<script>
+"use strict";
+init_pianopanels(el('virtual-piano-widget'));
+</script>
+</figure>
+
+<aside class="horizontal-ad"></aside>
+
+</div>
+<div id="column2"><aside></aside></div>
+</div>
+
+<script>insert_ads('es');</script>
+
+<main>
+<header>Descripción de funcionalidades del piano virtual</header>
+
+<section>
+<h2>Siete octavas completas: desde Do1 hasta Do8</h2>
+<p>
+Nuestro piano virtual incluye inicialmente cuatro octavas, desde Do2 hasta Do6, pero puedes ampliarlo para cubrir desde la octava más grave (Do1) hasta la más aguda (Do8). Utiliza los botones + y − situados a ambos lados del teclado virtual para cambiar el rango de octavas disponible.
+</p>
+</section><section>
+<h2>Aprovechamiento eficiente del teclado de la computadora</h2>
+<p>
+La sección principal del teclado físico está configurada para tocar tres octavas, desde Do2 hasta Do5. La fila Tab–QWERTY activa las teclas blancas desde Do3 hasta Si4, y el Do5 puede tocarse mediante la tecla Enter o Suprimir. La fila numérica superior activa las teclas negras dentro de ese mismo rango. La fila Shift–ZXCVB activa las teclas blancas desde Do2 hasta Sol3, utilizando desde la tecla Shift izquierda hasta la Shift derecha. Esto garantiza el acceso constante a tres octavas completas, incluso en los teclados más compactos de laptops.
+</p><p>
+Además, tanto el bloque de navegación como el bloque numérico están habilitados para tocar el piano. En un teclado completo con ambos bloques, la fila Tab–QWERTY se extiende hasta Do6, incluyendo todas las teclas negras intermedias. Así, un teclado físico completo permite ejecutar hasta cuatro octavas, desde Do2 hasta Do6.
+</p><p>
+La tecla Tab produce por defecto el Do3, pero puedes transponer todo el teclado una octava hacia arriba o hacia abajo. Para ello, haz clic en el selector ubicado sobre el teclado virtual o utiliza las teclas de flecha izquierda y derecha. Este mecanismo te permite tocar las siete octavas completas mediante el teclado de la computadora.
+</p>
+</section><section>
+<h2>Disposición Alternativa Solo con Teclas Blancas</h2>
+<p>
+Es posible cambiar la disposición del teclado para que cada tecla de la computadora 
+represente una tecla blanca del piano.  
+Cada fila toca teclas blancas consecutivas, mientras que las filas están desplazadas 
+para facilitar la ejecución de 
+<a href="/music-theory/major-triads/">triadas mayores</a>, 
+<a href="/music-theory/minor-triads/">triadas menores</a> y arpegios, 
+tocando ocasionalmente una 
+<a href="/music-theory/diminished-triads/">triada disminuida</a>.  
+Si te interesa esta idea, deberías explorar el <a href="/major-scale-arpeggion/">Arpeggion</a> — 
+un instrumento virtual que ofrece disposiciones de teclado adicionales 
+para cualquier escala mayor sin restricción a las teclas blancas.
+</p>
+</section><section>
+<h2>Selección de sonidos</h2>
+<p>Puedes elegir entre distintos sonidos para tu teclado virtual:</p>
+<ul>
+<li>Piano de cola (precargado): optimizado para una carga extremadamente rápida
+</li><li>Piano de cola (alta calidad): requiere unos segundos para cargarse
+</li><li>Piano eléctrico (suave)
+</li><li>Piano eléctrico (apagado)
+</li><li>Piano electrónico (campanillas)
+</li><li>Guitarra clásica
+</li></ul>
+<p>Próximamente se agregarán más sonidos.</p>
+<p>Puedes cambiar el sonido activo usando las teclas de flecha arriba y abajo del teclado de la computadora.</p>
+</section><section>
+<h2>Múltiples teclados, cada uno con su propio sonido</h2>
+<p>Esta página interactiva te permite tocar varios instrumentos simultáneamente.
+Haz clic en el botón 🎹 para clonar el teclado de piano.
+Cada teclado clonado puede configurarse de manera independiente, lo que te permite superponer distintos sonidos. Ten en cuenta que el teclado de la computadora está vinculado únicamente al piano virtual que se activó más recientemente.
+</p>
+</section><section>
+<h2>Control de volumen y pedal de sustain</h2>
+<p>El volumen se puede ajustar en una escala de 0 a 10. Todos los sonidos pueden reproducirse con o sin pedal de sustain. Activa o desactiva el pedal de sustain pulsando la tecla Bloq Mayús (Caps Lock).
+</p>
+</section><section>
+<h2>Marcado de teclas en el teclado virtual</h2>
+<p>Puedes marcar teclas como referencia haciendo clic en ellas mientras mantienes presionada la tecla Control. Esto te permite resaltar un subconjunto específico de teclas sobre el teclado virtual.
+Además, en el cuadro de diálogo <i>Más funciones</i> encontrarás un interruptor llamado <i>Marcar teclas</i>
+que te permite seleccionar teclas con solo hacer clic, sin mantener presionada la tecla Control.
+</p>
+</section>
+<section>
+<h2>Descargar imágenes del piano</h2>
+<p>
+Puedes descargar una imagen del piano tal como la ves, incluyendo las teclas marcadas y la elección de nombres de notas según las distintas convenciones.
+Puedes establecer la altura de la imagen descargada en píxeles y el formato de la imagen: SVG, WebP o PNG.
+</p>
+</section>
+
+<section>
+<h2>Toca acordes en una pantalla táctil</h2>
+<p>
+En un dispositivo con pantalla táctil puedes tocar acordes pulsando varias teclas simultáneamente, igual que en un piano físico.
+</p>
+</section>
+
+<section>
+<h2>Toca acordes en el teclado de la computadora</h2>
+<p>
+Con el teclado de la computadora puedes tocar acordes pulsando varias teclas simultáneamente, igual que en un piano físico,
+ya que la disposición del teclado coincide con la de las teclas blancas y negras de un piano real.
+</p><p>
+Además, puedes reconfigurar el teclado de la computadora para tocar cualquier acorde personalizado con una sola tecla.
+Para hacerlo, marca la casilla ACORDE, selecciona un acorde en el teclado del piano virtual y luego desmarca la casilla ACORDE para guardar el acorde elegido.
+Esto creará un <em>botón de acorde</em> debajo del teclado del piano. Puedes hacer clic en él para tocar el acorde.
+También puedes editar el botón de acorde haciendo clic en su ícono de configuración para asignarle una tecla de la computadora.
+Así puedes reconfigurar el teclado de la computadora para tocar los acordes que quieras.
+</p>
+</section>
+
+<section>
+<h2>Modifica la distribución del teclado de la computadora a tu gusto</h2>
+<p>
+Los <em>botones de acorde</em> descritos arriba también se pueden crear para notas individuales.
+Esto significa que puedes rediseñar cómo se asignan las teclas de la computadora a las teclas del piano.
+Ten en cuenta que puedes usar casi cualquier tecla, como F1, Num Lock o Scroll Lock.
+</p>
+</section>
+
+<section>
+<h2>Grabación y reproducción</h2>
+<p>
+Puedes grabar todo lo que interpretes en este piano virtual y reproducirlo cuando quieras. Para iniciar y detener la grabación, marca y desmarca la casilla GRABAR.
+Un <em>botón de reproducción</em> aparecerá automáticamente. Puedes crear varios botones de reproducción, cada uno con su propia grabación.
+Incluso puedes reproducir más de una grabación al mismo tiempo mientras haces otra grabación para combinarlas.
+Ten en cuenta que tus grabaciones pueden incluir el sonido de varios pianos, cada uno configurado con un instrumento o un volumen diferente.
+</p><p>
+Estos botones de reproducción también se pueden editar para asociarlos con teclas del teclado de la computadora.
+</p><p>
+Además, puedes descargar un archivo MIDI de cualquier grabación, pero
+se reproducirán todas las notas en un piano de cola con pedal de resonancia y un volumen uniforme por nota,
+ignorando la variedad presente en tu grabación.
+</p>
+</section>
+
+<section>
+<h2>Botones de acordes y reproducción para crear un proyecto musical complejo</h2>
+<p>
+Estos botones de acordes y de reproducción en varios teclados de piano pueden representar un proyecto musical complejo.
+Puedes cambiarles el nombre, clonarlos y arrastrarlos con el mouse para organizarlos en cualquier posición.
+Incluso es posible arrastrar un botón de un piano virtual a otro.
+</p>
+</section>
+
+<section>
+<h2>Guarda tu proyecto</h2>
+<p>
+Puedes guardar tu proyecto haciendo clic en Exportar. Esto descargará un archivo HTML en tu dispositivo.
+Ese archivo abrirá de nuevo el sitio web de VirtualPiano.Online.
+Además, si lo abres en un editor de texto verás que es legible para los humanos
+y extremadamente fácil de procesar por una computadora.
+Esto garantiza que tu trabajo no se pierda incluso si este sitio web deja de estar disponible.
+</p>
+</section>
+
+<section id="import">
+<h2>Importa tu proyecto de Apronus.com</h2>
+<p>
+Puedes importar tu proyecto guardado en el piano virtual de Apronus.com.
+</p>
+<script>
+"use strict";
+el('import').append(loadApronusButton());</script>
+</section>
+
+</main>
+
+<div lang="en">
+
+<footer>
+<nav>
+<ul>
+<li><address><a lang="en" href="/contact">Contact Page</a></address></li>
+<li><a lang="en" href="/privacy">Privacy</a></li>
+<li><a lang="en" href="/music-theory/">Music Theory</a></li>
+<li><a lang="en" href="/major-scale-arpeggion/">Major Scale Arpeggion</a></li>
+<li><a lang="en" href="/">Online Piano</a></li>
+<li><a lang="ru" href="/pianino/">Пианино Онлайн</a></li>
+<li><a lang="es" href="/teclado/">Piano Virtual</a></li>
+</ul>
+</nav>
+<div class="amazon" lang="en"><div>Please support this site by shopping at Amazon through this <a href="https://amzn.to/45qhVXc">music�theory</a> book.</div>
+<div>As an Amazon Associate I earn from qualifying purchases  at no cost to you, whatever you buy.</div></div>
+</footer>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SiteNavigationElement",
+  "name": [
+    "Contact Page",
+	"Privacy",
+    "Music Theory",
+	"Major Scale Arpeggion",
+    "Online Piano",
+    "Пианино Онлайн",
+    "Piano Virtual"
+  ],
+  "url": [
+    "https://virtualpiano.online/contact",
+	"https://virtualpiano.online/privacy",
+    "https://virtualpiano.online/music-theory/",
+    "https://virtualpiano.online/major-scale-arpeggion/",
+    "https://virtualpiano.online/",
+    "https://virtualpiano.online/pianino/",
+    "https://virtualpiano.online/teclado/"
+  ]
+}
+</script>
+</div>
+
+
+</body></html>
