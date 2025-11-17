@@ -38,12 +38,3 @@ This project can be easily deployed to any static web hosting service like Verce
 ### Deploy to Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fakashdeep45%2Fpaperpiano&project-name=paperpiano&repository-name=paperpiano)
-
-## License
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## Acknowledgments
-
-- Piano sounds from [Virtual Piano](https://virtualpiano.net/)
-- Piano key design inspired by various open-source piano projects
