@@ -53,8 +53,20 @@ const ACTIVATION_THRESHOLD = 0.5; // Balanced activation for quick taps
 const DEACTIVATION_THRESHOLD = 0.3; // Release quickly when finger lifts
 let canvasInitialized = false; // Track if canvas has been initialized
 
+// Movement detection for real piano-like behavior
+let previousFingerPositions = {}; // finger index -> { x, y, frame }
+let fingerKeyMapping = {}; // finger index -> key index
+let MOVEMENT_THRESHOLD = 10; // Minimum pixels of movement to trigger (adjustable)
+let DOWNWARD_MOVEMENT_THRESHOLD = 8; // Pixels of downward movement to trigger press (adjustable)
+let REST_THRESHOLD_FRAMES = 5; // Frames to wait before considering finger at rest (adjustable)
+let fingerRestFrames = {}; // finger index -> frames at rest
+let fingerPreviousKeys = {}; // finger index -> previous key index (to detect key changes)
+let fingerTriggeredKeys = {}; // finger index -> key index that was last triggered (to prevent double triggers)
+let fingerTriggerFrames = {}; // finger index -> frame when key was last triggered
+let TRIGGER_COOLDOWN_FRAMES = 8; // Frames to wait before allowing same key to trigger again (adjustable)
+
 // Landmark stabilization (reduces MediaPipe dot shaking)
-const LANDMARK_SMOOTHING_ALPHA = 0.45; // Balance between smoothness and responsiveness
+let LANDMARK_SMOOTHING_ALPHA = 0.45; // Balance between smoothness and responsiveness (adjustable)
 let stabilizedLandmarksCache = [];
 
 // Camera transform variables
@@ -350,6 +362,8 @@ function extractKeysFromVirtualPiano(svgElement) {
       canvasInitialized = true;
     }
     drawAllKeys();
+    // Update keyboard mapping when keys are loaded
+    updateKeyboardMapping();
   }
 }
 
@@ -410,77 +424,22 @@ function generatePianoKeys(startNote = null, numOctaves = null) {
     'A': 'A', 'A#': 'A#', 'B': 'B'
   };
   
+  // Track white key positions for proper black key placement
+  let whiteKeyPositions = [];
+  
   for (let i = 0; i < totalKeys; i++) {
     const noteIndex = (startIndex + i) % 12;
     const octave = startOctave + Math.floor((startIndex + i) / 12);
     const noteName = chromaticNotes[noteIndex];
     const isWhite = whiteNotes.includes(noteName);
     
-    // Map to audio file naming (use sharps for black keys: C#, D#, F#, G#, A#)
+    // Use sharps for black keys (C#, D#, F#, G#, A#)
+    // This matches acoustic_grand_piano naming (cs, ds, fs, gs, as)
     const audioNoteName = noteToAudioMap[noteName] || noteName;
     let fullNote = audioNoteName + octave;
     
-    // Map notes to available audio files (some notes use flats in audio files)
-    // Check if note exists in ALL_NOTES, if not, try flat equivalent
-    const noteMapping = {
-      'C#3': 'Db3', 'C#4': 'Db4', 'C#5': 'Db5',
-      'D#3': 'Eb3', 'D#4': 'Eb4', 'D#5': 'Eb5',
-      'F#3': 'Gb3', 'F#4': 'Gb4',
-      'G#3': 'Ab3', 'G#4': 'Ab4',
-      'A#3': 'Bb3', 'A#4': 'Bb4'
-    };
-    
-    // Use flat equivalent if available in audio files
-    if (noteMapping[fullNote]) {
-      fullNote = noteMapping[fullNote];
-    }
-    
-    // For notes not in ALL_NOTES, try to find closest available note
-    // This ensures all keys have sound even if exact note isn't available
-    const availableNotes = ['A3', 'A4', 'Ab3', 'Ab4', 'B3', 'B4', 'Bb3', 'Bb4',
-      'C3', 'C4', 'C5', 'D3', 'D4', 'D5', 'Db3', 'Db4', 'Db5',
-      'E3', 'E4', 'E5', 'Eb3', 'Eb4', 'Eb5', 'F3', 'F4',
-      'G3', 'G4', 'Gb3', 'Gb4'];
-    
-    // Store original note for fallback
-    const originalNote = fullNote;
-    
-    // If note doesn't exist, try to find closest match
-    if (!availableNotes.includes(fullNote)) {
-      // Try flat equivalent first
-      if (noteMapping[fullNote]) {
-        fullNote = noteMapping[fullNote];
-      }
-      
-      // If still not available, try octave transposition
-      if (!availableNotes.includes(fullNote)) {
-        const noteNameOnly = fullNote.replace(/\d+$/, '');
-        
-        // Try same note in different octaves (prioritize closer octaves)
-        for (let octOffset = 1; octOffset <= 2; octOffset++) {
-          // Try lower octave first
-          const lowerOctave = Math.max(3, octave - octOffset);
-          const lowerNote = noteNameOnly + lowerOctave;
-          if (availableNotes.includes(lowerNote)) {
-            fullNote = lowerNote;
-            break;
-          }
-          
-          // Try higher octave
-          const higherOctave = Math.min(5, octave + octOffset);
-          const higherNote = noteNameOnly + higherOctave;
-          if (availableNotes.includes(higherNote)) {
-            fullNote = higherNote;
-            break;
-          }
-        }
-        
-        // Last resort: use C4 as fallback (most common note)
-        if (!availableNotes.includes(fullNote)) {
-          fullNote = 'C4';
-        }
-      }
-    }
+    // acoustic_grand_piano has all notes from octave 0-7, so we can use the note directly
+    // No need for complex fallback logic - the note will be converted to acoustic format when playing
     
     if (isWhite) {
       // White key with rounded top corners
@@ -502,10 +461,34 @@ function generatePianoKeys(startNote = null, numOctaves = null) {
         index: keyIndex++
       });
       
+      // Store white key position for black key placement
+      whiteKeyPositions.push({
+        left: currentX,
+        right: currentX + keyWidth,
+        center: currentX + keyWidth / 2
+      });
+      
       currentX += keyWidth;
     } else {
-      // Black key - positioned between white keys (centered on gap)
-      const blackX = currentX - blackKeyWidth / 2;
+      // Black key - positioned above the gap between white keys
+      // Black keys are positioned between the last white key and the next white key
+      let blackX;
+      
+      // Count how many white keys we've seen so far (for this black key)
+      const whiteKeysBefore = whiteKeyPositions.length;
+      
+      if (whiteKeysBefore > 0) {
+        // Position black key centered between the last white key and where the next white key will be
+        // The next white key will be at currentX, so center the black key between last white key's right edge and currentX
+        const lastWhiteKey = whiteKeyPositions[whiteKeysBefore - 1];
+        const nextWhiteKeyX = currentX; // Where the next white key will start
+        // Center the black key between last white key's right edge and next white key's left edge
+        blackX = (lastWhiteKey.right + nextWhiteKeyX) / 2 - blackKeyWidth / 2;
+      } else {
+        // First key is black (shouldn't happen with standard piano, but handle it)
+        blackX = currentX - blackKeyWidth / 2;
+      }
+      
       const polygon = [
         [blackX, startY],
         [blackX + blackKeyWidth, startY],
@@ -554,9 +537,11 @@ async function loadExportKeys() {
           layoutCanvas.height = VIDEO_HEIGHT;
           canvasInitialized = true;
         }
-        // Draw keys on the canvas
-        drawAllKeys();
-      }
+      // Draw keys on the canvas
+      drawAllKeys();
+      // Update keyboard mapping when keys are loaded
+      updateKeyboardMapping();
+    }
   } catch (error) {
       console.warn("Failed to load dummylayout.json, generating default keys:", error);
       // Generate default piano keys if JSON fails
@@ -568,6 +553,8 @@ async function loadExportKeys() {
           canvasInitialized = true;
         }
         drawAllKeys();
+        // Update keyboard mapping when keys are loaded
+        updateKeyboardMapping();
       }
     }
   }
@@ -584,6 +571,14 @@ dummyButton.addEventListener('click', async () => {
       canvasInitialized = true;
     }
     drawAllKeys();
+    // Update keyboard mapping for generated keys
+    updateKeyboardMapping();
+    
+    // Force update the keyboard help
+    setTimeout(() => {
+      updateKeyboardMapping();
+      console.log('Keyboard mapping forced update after key generation');
+    }, 100);
   }
 });
 
@@ -600,6 +595,7 @@ function setupPianoControls() {
       pianoOctaves.textContent = pianoTransform.octaves + ' Octaves';
       exportKeys = generatePianoKeys();
       drawAllKeys();
+      updateKeyboardMapping();
     });
   }
   
@@ -609,6 +605,7 @@ function setupPianoControls() {
       pianoOctaves.textContent = pianoTransform.octaves + ' Octaves';
       exportKeys = generatePianoKeys();
       drawAllKeys();
+      updateKeyboardMapping();
     });
   }
   
@@ -660,6 +657,7 @@ function setupPianoControls() {
       pianoOctaves.textContent = '2.5 Octaves';
       exportKeys = generatePianoKeys();
       drawAllKeys();
+      updateKeyboardMapping();
     });
   }
   
@@ -813,6 +811,101 @@ if (document.readyState === 'loading') {
   setupCameraControls();
 }
 
+// Setup playing sensitivity controls
+function setupSensitivityControls() {
+  // Movement threshold slider
+  const movementSlider = document.getElementById('movementThresholdSlider');
+  const movementDisplay = document.getElementById('movement-threshold');
+  if (movementSlider && movementDisplay) {
+    movementSlider.addEventListener('input', (e) => {
+      MOVEMENT_THRESHOLD = parseInt(e.target.value);
+      movementDisplay.textContent = MOVEMENT_THRESHOLD;
+    });
+  }
+
+  // Downward movement threshold slider
+  const downwardSlider = document.getElementById('downwardThresholdSlider');
+  const downwardDisplay = document.getElementById('downward-threshold');
+  if (downwardSlider && downwardDisplay) {
+    downwardSlider.addEventListener('input', (e) => {
+      DOWNWARD_MOVEMENT_THRESHOLD = parseInt(e.target.value);
+      downwardDisplay.textContent = DOWNWARD_MOVEMENT_THRESHOLD;
+    });
+  }
+
+  // Rest threshold slider
+  const restSlider = document.getElementById('restThresholdSlider');
+  const restDisplay = document.getElementById('rest-threshold');
+  if (restSlider && restDisplay) {
+    restSlider.addEventListener('input', (e) => {
+      REST_THRESHOLD_FRAMES = parseInt(e.target.value);
+      restDisplay.textContent = REST_THRESHOLD_FRAMES;
+    });
+  }
+
+  // Cooldown slider
+  const cooldownSlider = document.getElementById('cooldownSlider');
+  const cooldownDisplay = document.getElementById('cooldown-frames');
+  if (cooldownSlider && cooldownDisplay) {
+    cooldownSlider.addEventListener('input', (e) => {
+      TRIGGER_COOLDOWN_FRAMES = parseInt(e.target.value);
+      cooldownDisplay.textContent = TRIGGER_COOLDOWN_FRAMES;
+    });
+  }
+
+  // Smoothing slider
+  const smoothingSlider = document.getElementById('smoothingSlider');
+  const smoothingDisplay = document.getElementById('smoothing-alpha');
+  if (smoothingSlider && smoothingDisplay) {
+    smoothingSlider.addEventListener('input', (e) => {
+      LANDMARK_SMOOTHING_ALPHA = parseFloat(e.target.value);
+      smoothingDisplay.textContent = LANDMARK_SMOOTHING_ALPHA.toFixed(2);
+    });
+  }
+
+  // Reset button
+  const resetBtn = document.getElementById('resetSensitivity');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      // Reset to default values
+      MOVEMENT_THRESHOLD = 10;
+      DOWNWARD_MOVEMENT_THRESHOLD = 8;
+      REST_THRESHOLD_FRAMES = 5;
+      TRIGGER_COOLDOWN_FRAMES = 8;
+      LANDMARK_SMOOTHING_ALPHA = 0.45;
+
+      // Update sliders
+      if (movementSlider) {
+        movementSlider.value = MOVEMENT_THRESHOLD;
+        movementDisplay.textContent = MOVEMENT_THRESHOLD;
+      }
+      if (downwardSlider) {
+        downwardSlider.value = DOWNWARD_MOVEMENT_THRESHOLD;
+        downwardDisplay.textContent = DOWNWARD_MOVEMENT_THRESHOLD;
+      }
+      if (restSlider) {
+        restSlider.value = REST_THRESHOLD_FRAMES;
+        restDisplay.textContent = REST_THRESHOLD_FRAMES;
+      }
+      if (cooldownSlider) {
+        cooldownSlider.value = TRIGGER_COOLDOWN_FRAMES;
+        cooldownDisplay.textContent = TRIGGER_COOLDOWN_FRAMES;
+      }
+      if (smoothingSlider) {
+        smoothingSlider.value = LANDMARK_SMOOTHING_ALPHA;
+        smoothingDisplay.textContent = LANDMARK_SMOOTHING_ALPHA.toFixed(2);
+      }
+    });
+  }
+}
+
+// Initialize sensitivity controls when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupSensitivityControls);
+} else {
+  setupSensitivityControls();
+}
+
 import {
   HandLandmarker,
   FilesetResolver,
@@ -876,7 +969,7 @@ function processLandmarkerResults(results) {
   const rawDetectedKeys = new Set();
 
   if (stabilizedLandmarks && stabilizedLandmarks.length > 0) {
-    stabilizedLandmarks.forEach(landmarks => {
+    stabilizedLandmarks.forEach((landmarks, handIndex) => {
       // Include thumb (4) and all finger tips (8=index, 12=middle, 16=ring, 20=pinky)
       // MediaPipe landmarks: 4=thumb tip, 8=index tip, 12=middle tip, 16=ring tip, 20=pinky tip
       const thumbTip = landmarks[4];
@@ -904,6 +997,57 @@ function processLandmarkerResults(results) {
         const transformedPoint = transformPointForDetection(x, y);
         const tx = transformedPoint.x;
         const ty = transformedPoint.y;
+        
+        // Get finger ID (use hand index + finger index for uniqueness)
+        const fingerId = `${handIndex}_${fingerIndex}`;
+        
+        // Check for movement
+        let hasMovement = false;
+        let hasDownwardMovement = false;
+        
+        if (previousFingerPositions[fingerId]) {
+          const prev = previousFingerPositions[fingerId];
+          const dx = tx - prev.x;
+          const dy = ty - prev.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Check for significant movement
+          hasMovement = distance > MOVEMENT_THRESHOLD;
+          
+          // Check for downward movement (pressing down)
+          hasDownwardMovement = dy > DOWNWARD_MOVEMENT_THRESHOLD;
+          
+          // If finger moved, reset rest counter
+          if (hasMovement || hasDownwardMovement) {
+            fingerRestFrames[fingerId] = 0;
+          } else {
+            // Increment rest counter
+            fingerRestFrames[fingerId] = (fingerRestFrames[fingerId] || 0) + 1;
+          }
+        } else {
+          // First time seeing this finger - initialize but don't trigger
+          hasMovement = false;
+          hasDownwardMovement = false;
+          fingerRestFrames[fingerId] = REST_THRESHOLD_FRAMES; // Start as "at rest" to prevent initial trigger
+        }
+        
+        // Update previous position
+        previousFingerPositions[fingerId] = { x: tx, y: ty, frame: frameCount };
+        
+        // Check if finger is at rest
+        const isAtRest = (fingerRestFrames[fingerId] || 0) >= REST_THRESHOLD_FRAMES;
+        
+        // Check cooldown - prevent double triggers on same key
+        const lastTriggeredKey = fingerTriggeredKeys[fingerId];
+        const lastTriggerFrame = fingerTriggerFrames[fingerId] || 0;
+        const framesSinceTrigger = frameCount - lastTriggerFrame;
+        const isInCooldown = lastTriggeredKey !== undefined && framesSinceTrigger < TRIGGER_COOLDOWN_FRAMES;
+        
+        // STRICT: Skip entirely if finger is at rest (no movement, no downward press)
+        // This prevents any triggers from resting fingers
+        if (isAtRest && !hasDownwardMovement && !hasMovement) {
+          return; // Skip processing this finger entirely - it's resting
+        }
         
         // Get keys bounds to calculate line Y positions
         const keysBounds = getKeysBoundingBox(exportKeys);
@@ -970,10 +1114,72 @@ function processLandmarkerResults(results) {
             return a.distance - b.distance;
           });
           // Add the best match (thumb preferred, then closest)
-          rawDetectedKeys.add(fingerKeys[0].index);
+          const selectedKeyIndex = fingerKeys[0].index;
+          
+          // Check if finger moved to a different key
+          const previousKey = fingerPreviousKeys[fingerId];
+          const keyChanged = previousKey !== undefined && previousKey !== selectedKeyIndex;
+          
+          // Check cooldown for this specific key
+          const isSameKeyAsLastTrigger = lastTriggeredKey === selectedKeyIndex;
+          // Allow trigger if: not in cooldown, OR key changed, OR enough time passed since last trigger
+          const canTrigger = !isInCooldown || keyChanged || (isSameKeyAsLastTrigger && framesSinceTrigger >= TRIGGER_COOLDOWN_FRAMES);
+          
+          // STRICT: Only trigger if there's actual significant movement or downward press
+          // AND not in cooldown (unless key changed)
+          // NO triggers for resting fingers
+          const shouldTrigger = canTrigger && (hasMovement || hasDownwardMovement || keyChanged);
+          
+          if (shouldTrigger) {
+            rawDetectedKeys.add(selectedKeyIndex);
+            fingerKeyMapping[fingerId] = selectedKeyIndex;
+            fingerPreviousKeys[fingerId] = selectedKeyIndex;
+            fingerTriggeredKeys[fingerId] = selectedKeyIndex;
+            fingerTriggerFrames[fingerId] = frameCount;
+            fingerRestFrames[fingerId] = 0; // Reset rest counter when key is triggered
+          } else if (fingerKeyMapping[fingerId] === selectedKeyIndex && hasDownwardMovement && !isAtRest) {
+            // Keep same key only if actively pressing down AND not at rest (for sustained notes while actively pressing)
+            rawDetectedKeys.add(selectedKeyIndex);
+          }
         } else if (fingerKeys.length === 1) {
-          // Single key detected, add it
-          rawDetectedKeys.add(fingerKeys[0].index);
+          // Single key detected
+          const selectedKeyIndex = fingerKeys[0].index;
+          
+          // Check if finger moved to a different key
+          const previousKey = fingerPreviousKeys[fingerId];
+          const keyChanged = previousKey !== undefined && previousKey !== selectedKeyIndex;
+          
+          // Check cooldown for this specific key
+          const isSameKeyAsLastTrigger = lastTriggeredKey === selectedKeyIndex;
+          // Allow trigger if: not in cooldown, OR key changed, OR enough time passed since last trigger
+          const canTrigger = !isInCooldown || keyChanged || (isSameKeyAsLastTrigger && framesSinceTrigger >= TRIGGER_COOLDOWN_FRAMES);
+          
+          // STRICT: Only trigger if there's actual significant movement or downward press
+          // AND not in cooldown (unless key changed)
+          // NO triggers for resting fingers
+          const shouldTrigger = canTrigger && (hasMovement || hasDownwardMovement || keyChanged);
+          
+          if (shouldTrigger) {
+            rawDetectedKeys.add(selectedKeyIndex);
+            fingerKeyMapping[fingerId] = selectedKeyIndex;
+            fingerPreviousKeys[fingerId] = selectedKeyIndex;
+            fingerTriggeredKeys[fingerId] = selectedKeyIndex;
+            fingerTriggerFrames[fingerId] = frameCount;
+            fingerRestFrames[fingerId] = 0; // Reset rest counter when key is triggered
+          } else if (fingerKeyMapping[fingerId] === selectedKeyIndex && hasDownwardMovement && !isAtRest) {
+            // Keep same key only if actively pressing down AND not at rest (for sustained notes while actively pressing)
+            rawDetectedKeys.add(selectedKeyIndex);
+          }
+        } else {
+          // Finger not in any key - remove mapping and stop note
+          if (fingerKeyMapping[fingerId] !== undefined) {
+            const oldKeyIndex = fingerKeyMapping[fingerId];
+            delete fingerKeyMapping[fingerId];
+            // Note will stop automatically when key is no longer detected
+          }
+          if (fingerPreviousKeys[fingerId] !== undefined) {
+            delete fingerPreviousKeys[fingerId];
+          }
         }
       });
     });
@@ -1098,7 +1304,9 @@ function processLandmarkerResults(results) {
   hoveredKeyIndices.clear();
   smoothedActiveKeys.forEach(i => hoveredKeyIndices.add(i));
 
-    drawAllKeys(hoveredKeyIndices);
+    // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
 
   if (stabilizedLandmarks && stabilizedLandmarks.length > 0) {
     stabilizedLandmarks.forEach(landmarks => {
@@ -1152,7 +1360,15 @@ function processLandmarkerResults(results) {
       hideHoverNote();
     }
   } else {
-    // No hands detected - clear raw detections but keep smoothed keys for a bit
+    // No hands detected - clear finger positions and mappings
+    previousFingerPositions = {};
+    fingerKeyMapping = {};
+    fingerRestFrames = {};
+    fingerPreviousKeys = {};
+    fingerTriggeredKeys = {};
+    fingerTriggerFrames = {};
+    
+    // Clear raw detections but keep smoothed keys for a bit
     // This prevents keys from disappearing immediately when hand briefly leaves frame
     const allKeys = new Set(exportKeys.map((_, i) => i));
     allKeys.forEach(i => {
@@ -1177,7 +1393,9 @@ function processLandmarkerResults(results) {
     
     hoveredKeyIndices.clear();
     smoothedActiveKeys.forEach(i => hoveredKeyIndices.add(i));
-    drawAllKeys(hoveredKeyIndices);
+    // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
     
     // Stop all notes if no keys are hovered
     if (hoveredKeyIndices.size === 0) {
@@ -1186,6 +1404,19 @@ function processLandmarkerResults(results) {
     }
     hideHoverNote();
   }
+  
+  // Clean up old finger positions (remove fingers not seen in last 10 frames)
+  const currentFrame = frameCount;
+  Object.keys(previousFingerPositions).forEach(fingerId => {
+    if (currentFrame - previousFingerPositions[fingerId].frame > 10) {
+      delete previousFingerPositions[fingerId];
+      delete fingerKeyMapping[fingerId];
+      delete fingerRestFrames[fingerId];
+      delete fingerPreviousKeys[fingerId];
+      delete fingerTriggeredKeys[fingerId];
+      delete fingerTriggerFrames[fingerId];
+    }
+  });
 }
 
 async function processLoop() {
@@ -1260,13 +1491,17 @@ async function processLoop() {
           console.warn('Hand detection error:', e);
           // Still draw keys even if detection fails
           if (exportKeys && exportKeys.length > 0) {
-            drawAllKeys(hoveredKeyIndices);
+            // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
           }
         }
       } else {
         // Video not ready yet - just draw keys
         if (exportKeys && exportKeys.length > 0) {
-          drawAllKeys(hoveredKeyIndices);
+          // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
         }
         
         // Debug: log video state for mobile camera
@@ -1291,13 +1526,17 @@ async function processLoop() {
       
       // Always redraw keys to ensure they're visible
       if (exportKeys && exportKeys.length > 0) {
-        drawAllKeys(hoveredKeyIndices);
+        // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
       }
     }
   } else {
     // Video not ready yet, but still try to draw keys if loaded
     if (exportKeys && exportKeys.length > 0 && canvasInitialized) {
-      drawAllKeys(hoveredKeyIndices);
+      // Combine hand-detected keys and keyboard-pressed keys for display
+    const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+    drawAllKeys(allHoveredIndices);
     }
   }
   requestAnimationFrame(processLoop);
@@ -1308,7 +1547,15 @@ async function startAll() {
   try {
     await setupWebcam()
     await createLandmarker();
-    requestAnimationFrame(processLoop);  
+    requestAnimationFrame(processLoop);
+    
+    // Ensure keyboard mapping is initialized after everything loads
+    setTimeout(() => {
+      if (exportKeys && exportKeys.length > 0 && Object.keys(keyToIndex).length === 0) {
+        console.log('Auto-initializing keyboard mapping after page load...');
+        updateKeyboardMapping();
+      }
+    }, 2000);
   } 
   catch (err) {
     alert('error');
@@ -1360,13 +1607,421 @@ document.addEventListener('click', resumeAudioContext, { once: false });
 document.addEventListener('touchstart', resumeAudioContext, { once: false });
 document.addEventListener('keydown', resumeAudioContext, { once: false });
 
-// List of all available notes
-const ALL_NOTES = [
-  'A3', 'A4', 'Ab3', 'Ab4', 'B3', 'B4', 'Bb3', 'Bb4',
-  'C3', 'C4', 'C5', 'D3', 'D4', 'D5', 'Db3', 'Db4', 'Db5',
-  'E3', 'E4', 'E5', 'Eb3', 'Eb4', 'Eb5', 'F3', 'F4',
-  'G3', 'G4', 'Gb3', 'Gb4'
+// Dynamic keyboard mapping to detected piano keys
+let keyToIndex = {};
+let indexToKey = {};
+
+// Keyboard layout for mapping - White keys (Tab, Q-P, [, ], \, numpad 7, 8, 9, numpad +)
+const whiteKeyLayout = [
+    'Tab', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\\', 'Numpad7', 'Numpad8', 'Numpad9', 'NumpadAdd'
 ];
+
+// Keyboard layout for mapping - Black keys (`, 1-9, 0, -, =, Backspace, NumLock, /, *, numpad -)
+const blackKeyLayout = [
+    '`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'Backspace', 'NumLock', '/', '*', 'NumpadSubtract'
+];
+
+// Combined layout: white keys first, then black keys
+const keyboardLayout = [...whiteKeyLayout, ...blackKeyLayout];
+
+// Function to update keyboard mapping based on detected keys
+function updateKeyboardMapping() {
+    if (!exportKeys || exportKeys.length === 0) {
+        keyToIndex = {};
+        indexToKey = {};
+        console.log('Keyboard mapping: No keys available yet');
+        const keyboardHelp = document.querySelector('.keyboard-help');
+        if (keyboardHelp) {
+            keyboardHelp.innerHTML = `
+                <div><strong>🎹 Keyboard Controls:</strong></div>
+                <div style="margin-top: 0.5rem; opacity: 0.8;">No keys available yet. Waiting for piano to load...</div>
+                <div style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.7;">💡 Click "Play in the air" button to generate keys</div>
+            `;
+        }
+        return;
+    }
+
+    // Sort keys left to right
+    const sortedKeys = [...exportKeys].sort((a, b) => {
+        if (!a.polygon || !b.polygon || a.polygon.length === 0 || b.polygon.length === 0) {
+            return 0;
+        }
+        const aCenterX = a.polygon.reduce((sum, p) => sum + p[0], 0) / a.polygon.length;
+        const bCenterX = b.polygon.reduce((sum, p) => sum + p[0], 0) / b.polygon.length;
+        return aCenterX - bCenterX;
+    });
+
+    // Interleave keys like real piano: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+    // This means we need to map keys in chromatic order, not separate white/black
+    const interleavedKeys = [];
+    const whiteKeys = sortedKeys.filter(k => k.type === 'white');
+    const blackKeys = sortedKeys.filter(k => k.type === 'black');
+    
+    // Create interleaved mapping: for each white key, add it and its following black key(s)
+    let whiteIdx = 0;
+    let blackIdx = 0;
+    
+    for (let i = 0; i < sortedKeys.length; i++) {
+        const key = sortedKeys[i];
+        if (key.type === 'white') {
+            interleavedKeys.push(key);
+            whiteIdx++;
+            // After C, D, F, G, A - add the black key that follows
+            // Check if next key in sorted order is a black key that should be between this and next white
+            if (i + 1 < sortedKeys.length && sortedKeys[i + 1].type === 'black') {
+                const nextBlack = sortedKeys[i + 1];
+                // Check if this black key is positioned between current and next white key
+                const currentCenterX = key.polygon.reduce((sum, p) => sum + p[0], 0) / key.polygon.length;
+                const nextBlackCenterX = nextBlack.polygon.reduce((sum, p) => sum + p[0], 0) / nextBlack.polygon.length;
+                // Find next white key
+                let nextWhiteIdx = i + 1;
+                while (nextWhiteIdx < sortedKeys.length && sortedKeys[nextWhiteIdx].type !== 'white') {
+                    nextWhiteIdx++;
+                }
+                if (nextWhiteIdx < sortedKeys.length) {
+                    const nextWhite = sortedKeys[nextWhiteIdx];
+                    const nextWhiteCenterX = nextWhite.polygon.reduce((sum, p) => sum + p[0], 0) / nextWhite.polygon.length;
+                    // If black key is between current and next white, add it
+                    if (nextBlackCenterX > currentCenterX && nextBlackCenterX < nextWhiteCenterX) {
+                        interleavedKeys.push(nextBlack);
+                        blackIdx++;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add any remaining black keys that weren't interleaved
+    for (let i = 0; i < blackKeys.length; i++) {
+        if (!interleavedKeys.includes(blackKeys[i])) {
+            // Find the right position to insert
+            const blackCenterX = blackKeys[i].polygon.reduce((sum, p) => sum + p[0], 0) / blackKeys[i].polygon.length;
+            let insertIdx = interleavedKeys.length;
+            for (let j = 0; j < interleavedKeys.length; j++) {
+                const keyCenterX = interleavedKeys[j].polygon.reduce((sum, p) => sum + p[0], 0) / interleavedKeys[j].polygon.length;
+                if (blackCenterX < keyCenterX) {
+                    insertIdx = j;
+                    break;
+                }
+            }
+            interleavedKeys.splice(insertIdx, 0, blackKeys[i]);
+        }
+    }
+
+    // Map keyboard keys to interleaved key indices (like real piano)
+    keyToIndex = {};
+    indexToKey = {};
+    
+    // Combine white and black key layouts in interleaved order
+    const combinedLayout = [];
+    let whiteLayoutIdx = 0;
+    let blackLayoutIdx = 0;
+    
+    // Interleave: white, black (if exists), white, black (if exists), etc.
+    for (let i = 0; i < interleavedKeys.length; i++) {
+        if (interleavedKeys[i].type === 'white' && whiteLayoutIdx < whiteKeyLayout.length) {
+            combinedLayout.push(whiteKeyLayout[whiteLayoutIdx++]);
+        } else if (interleavedKeys[i].type === 'black' && blackLayoutIdx < blackKeyLayout.length) {
+            combinedLayout.push(blackKeyLayout[blackLayoutIdx++]);
+        }
+    }
+    
+    // Map combined layout to interleaved keys
+    const maxKeys = Math.min(interleavedKeys.length, combinedLayout.length);
+    for (let i = 0; i < maxKeys; i++) {
+        const key = combinedLayout[i];
+        let normalizedKey;
+        
+        // Handle special keys
+        if (key === 'Tab') normalizedKey = 'Tab';
+        else if (key === 'NumpadAdd') normalizedKey = 'NumpadAdd';
+        else if (key === 'Numpad7') normalizedKey = 'Numpad7';
+        else if (key === 'Numpad8') normalizedKey = 'Numpad8';
+        else if (key === 'Numpad9') normalizedKey = 'Numpad9';
+        else if (key === 'NumpadSubtract') normalizedKey = 'NumpadSubtract';
+        else if (key === 'Backspace') normalizedKey = 'Backspace';
+        else if (key === 'NumLock') normalizedKey = 'NumLock';
+        else if (key === '\\') normalizedKey = '\\';
+        else if (key === '/') normalizedKey = '/';
+        else if (key === '*') normalizedKey = '*';
+        else if (key === '-') normalizedKey = '-';
+        else if (key === '=') normalizedKey = '=';
+        else if (key === '`') normalizedKey = '`';
+        else normalizedKey = key.toLowerCase();
+        
+        keyToIndex[normalizedKey] = interleavedKeys[i].index;
+        indexToKey[interleavedKeys[i].index] = normalizedKey;
+    }
+
+    const maxWhiteKeys = whiteKeys.length;
+    const maxBlackKeys = blackKeys.length;
+    console.log(`✅ Keyboard mapping updated: ${maxWhiteKeys} white keys, ${maxBlackKeys} black keys (interleaved)`);
+    console.log('Sample mappings:', sortedKeys.slice(0, 10).map((k, i) => {
+        const mappedKey = indexToKey[k.index] || '?';
+        return `${mappedKey}→${k.note}`;
+    }).join(', '));
+}
+
+// Track currently pressed keys to prevent key repeat issues
+const pressedKeys = new Set();
+
+// Track keyboard-pressed keys separately from hand-detected keys
+const keyboardPressedIndices = new Set();
+
+// Add keyboard event listeners
+document.addEventListener('keydown', (event) => {
+    // Handle special keys that need event.code instead of event.key
+    let normalizedKey = event.key;
+    
+    // Map special keys using event.code for better reliability
+    if (event.code === 'Tab') {
+        normalizedKey = 'Tab';
+        event.preventDefault(); // Prevent tab from moving focus
+    } else if (event.code === 'Backquote' || event.key === '`') {
+        normalizedKey = '`';
+    } else if (event.code === 'Backspace') {
+        normalizedKey = 'Backspace';
+    } else if (event.code === 'NumLock') {
+        normalizedKey = 'NumLock';
+    } else if (event.code === 'NumpadAdd') {
+        normalizedKey = 'NumpadAdd';
+    } else if (event.code === 'NumpadSubtract') {
+        normalizedKey = 'NumpadSubtract';
+    } else if (event.code === 'Slash' || event.key === '/') {
+        normalizedKey = '/';
+    } else if (event.code === 'Digit8' && event.shiftKey) {
+        normalizedKey = '*';
+    } else if (event.code === 'NumpadMultiply') {
+        normalizedKey = '*';
+    } else if (event.code === 'Minus' || event.key === '-') {
+        normalizedKey = '-';
+    } else if (event.code === 'Equal' || event.key === '=') {
+        normalizedKey = '=';
+    } else if (event.code === 'Backslash' || event.key === '\\') {
+        normalizedKey = '\\';
+    } else if (event.code === 'BracketLeft' || event.key === '[') {
+        normalizedKey = '[';
+    } else if (event.code === 'BracketRight' || event.key === ']') {
+        normalizedKey = ']';
+    } else if (event.code === 'Numpad7') {
+        normalizedKey = 'Numpad7';
+    } else if (event.code === 'Numpad8') {
+        normalizedKey = 'Numpad8';
+    } else if (event.code === 'Numpad9') {
+        normalizedKey = 'Numpad9';
+    } else {
+        // For regular letter keys, use lowercase
+        normalizedKey = event.key.toLowerCase();
+    }
+    
+    // Try to initialize mapping if not done yet
+    if (Object.keys(keyToIndex).length === 0 && exportKeys && exportKeys.length > 0) {
+        console.log('Keyboard mapping not initialized, initializing now...');
+        updateKeyboardMapping();
+    }
+    
+    // Debug: log key press if mapping is empty
+    if (Object.keys(keyToIndex).length === 0) {
+        console.log('Keyboard not mapped yet. Pressed key:', normalizedKey, '| event.key:', event.key, '| event.code:', event.code, '| exportKeys length:', exportKeys?.length || 0);
+        // Show helpful message
+        const keyboardHelp = document.querySelector('.keyboard-help');
+        if (keyboardHelp) {
+            keyboardHelp.innerHTML = `
+                <div><strong>🎹 Keyboard Controls:</strong></div>
+                <div style="margin-top: 0.5rem; color: #fbbf24;">⚠️ Piano keys not loaded yet. Please wait...</div>
+                <div style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">Press "Play in the air" button to generate keys</div>
+            `;
+        }
+        return;
+    }
+    
+    // Prevent default for piano keys to avoid scrolling and other default behaviors
+    if (keyToIndex[normalizedKey]) {
+        event.preventDefault();
+
+        // If key is already pressed, don't trigger again
+        if (pressedKeys.has(normalizedKey)) return;
+
+        pressedKeys.add(normalizedKey);
+        const keyIndex = keyToIndex[normalizedKey];
+        const key = exportKeys.find(k => k.index === keyIndex);
+        if (key) {
+            const note = key.note;
+            console.log(`Playing note: ${note} (key: ${normalizedKey})`);
+
+            // Play the note
+            tryPlayNote(note);
+
+            // Add to keyboard-pressed indices for visual feedback
+            keyboardPressedIndices.add(keyIndex);
+            
+            // Update canvas to show highlighted key
+            const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+            drawAllKeys(allHoveredIndices);
+        } else {
+            console.warn(`Key not found for index ${keyIndex}`);
+        }
+    } else {
+        // Key not mapped - show helpful message for first few unmapped keys
+        if (!pressedKeys.has('_unmapped_shown')) {
+            console.log(`Key "${normalizedKey}" (event.key: "${event.key}", event.code: "${event.code}") is not mapped. Available mapped keys:`, Object.keys(keyToIndex).slice(0, 10).join(', '));
+            pressedKeys.add('_unmapped_shown');
+            setTimeout(() => pressedKeys.delete('_unmapped_shown'), 2000);
+        }
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    // Handle special keys that need event.code instead of event.key
+    let normalizedKey = event.key;
+    
+    // Map special keys (same as keydown)
+    if (event.code === 'Tab') {
+        normalizedKey = 'Tab';
+    } else if (event.code === 'Backquote' || event.key === '`') {
+        normalizedKey = '`';
+    } else if (event.code === 'Backspace') {
+        normalizedKey = 'Backspace';
+    } else if (event.code === 'NumLock') {
+        normalizedKey = 'NumLock';
+    } else if (event.code === 'NumpadAdd') {
+        normalizedKey = 'NumpadAdd';
+    } else if (event.code === 'NumpadSubtract') {
+        normalizedKey = 'NumpadSubtract';
+    } else if (event.code === 'Slash' || event.key === '/') {
+        normalizedKey = '/';
+    } else if (event.code === 'Digit8' && event.shiftKey) {
+        normalizedKey = '*';
+    } else if (event.code === 'NumpadMultiply') {
+        normalizedKey = '*';
+    } else if (event.code === 'Minus' || event.key === '-') {
+        normalizedKey = '-';
+    } else if (event.code === 'Equal' || event.key === '=') {
+        normalizedKey = '=';
+    } else if (event.code === 'Backslash' || event.key === '\\') {
+        normalizedKey = '\\';
+    } else if (event.code === 'BracketLeft' || event.key === '[') {
+        normalizedKey = '[';
+    } else if (event.code === 'BracketRight' || event.key === ']') {
+        normalizedKey = ']';
+    } else if (event.code === 'Numpad7') {
+        normalizedKey = 'Numpad7';
+    } else if (event.code === 'Numpad8') {
+        normalizedKey = 'Numpad8';
+    } else if (event.code === 'Numpad9') {
+        normalizedKey = 'Numpad9';
+    } else {
+        // For regular letter keys, use lowercase
+        normalizedKey = event.key.toLowerCase();
+    }
+    
+    if (keyToIndex[normalizedKey]) {
+        event.preventDefault();
+        const keyIndex = keyToIndex[normalizedKey];
+        const key = exportKeys.find(k => k.index === keyIndex);
+        if (key) {
+            const note = key.note;
+            pressedKeys.delete(normalizedKey);
+            stopNote(note);
+
+            // Remove from keyboard-pressed indices
+            keyboardPressedIndices.delete(keyIndex);
+            
+            // Update canvas to remove highlight
+            const allHoveredIndices = new Set([...hoveredKeyIndices, ...keyboardPressedIndices]);
+            drawAllKeys(allHoveredIndices);
+        }
+    }
+});
+
+// Function to shift octaves (for future enhancement)
+function shiftOctave(direction) {
+    // This is a placeholder for octave shifting functionality
+    // Currently, the piano keys are fixed based on the loaded layout
+    console.log(`Octave shift requested: ${direction > 0 ? 'up' : 'down'}`);
+    // Future: Could regenerate keys with different starting note
+}
+
+// Add CSS for visual feedback
+const style = document.createElement('style');
+style.textContent = `
+    .piano-key.active {
+        filter: brightness(0.8);
+        transform: translateY(2px);
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+    }`;
+document.head.appendChild(style);
+
+// Function to highlight piano keys when played via keyboard
+window.highlightKey = function(keyElement, isActive) {
+    if (!keyElement) return;
+    
+    // Get the note from the key element
+    const note = keyElement.getAttribute('data-note');
+    if (!note) return;
+    
+    // Find all keys with the same note (in case of multiple octaves)
+    const allKeys = document.querySelectorAll('.piano-key');
+    allKeys.forEach(key => {
+        if (key.getAttribute('data-note') === note) {
+            if (isActive) {
+                key.classList.add('active');
+                key.style.transition = 'all 0.1s ease';
+                key.style.transform = 'translateY(2px)';
+                key.style.filter = 'brightness(1.2)';
+            } else {
+                key.classList.remove('active');
+                key.style.transform = '';
+                key.style.filter = '';
+            }
+        }
+    });
+};
+
+// Make sure the piano keys have the data-note attribute
+const originalDrawPoly = drawPoly;
+window.drawPoly = function(ctxLC, pts, fillStyle, strokeStyle, text, highlight = false, strokeWidth = 1.5) {
+    const result = originalDrawPoly.apply(this, arguments);
+    if (result && text && text.note) {
+        result.setAttribute('data-note', text.note);
+        result.classList.add('piano-key');
+    }
+    return result;
+};
+
+// Convert note name to acoustic_grand_piano format (e.g., C3 -> c3, C#3 -> cs3)
+function noteToAcousticPianoFormat(note) {
+  // Note format: C3, C#3, Db3, etc. -> c3, cs3, db3, etc.
+  const noteName = note.replace(/\d+$/, ''); // Remove octave
+  const octave = note.match(/\d+$/)?.[0] || '3';
+  
+  // Convert to lowercase and handle sharps/flats
+  let converted = noteName.toLowerCase();
+  
+  // Handle sharps: C# -> cs, D# -> ds, etc.
+  if (converted.includes('#')) {
+    converted = converted.replace('#', 's');
+  }
+  // Handle flats: Db -> db, Eb -> eb, etc. (already lowercase)
+  
+  return converted + octave;
+}
+
+// Generate list of all available notes in acoustic_grand_piano format
+function generateAllNotes(startOctave = 0, endOctave = 7) {
+  const notes = [];
+  const noteNames = ['c', 'cs', 'd', 'ds', 'e', 'f', 'fs', 'g', 'gs', 'a', 'as', 'b'];
+  
+  for (let octave = startOctave; octave <= endOctave; octave++) {
+    for (const noteName of noteNames) {
+      notes.push(noteName + octave);
+    }
+  }
+  
+  return notes;
+}
+
+const ALL_NOTES = generateAllNotes(0, 7); // All notes from octave 0 to 7
 
 // Preload all audio files (will wait for user interaction)
 async function preloadAllAudio() {
@@ -1394,10 +2049,11 @@ async function preloadAllAudio() {
   };
   
   const ctx = await waitForInteraction();
-  console.log('Preloading audio files...');
+  console.log('Preloading audio files from acoustic_grand_piano...');
   const loadPromises = ALL_NOTES.map(async (note) => {
     try {
-      const url = `sounds/${note}.mp3`;
+      // Use acoustic_grand_piano folder with lowercase note names
+      const url = `acoustic_grand_piano/${note}.mp3`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -1406,6 +2062,18 @@ async function preloadAllAudio() {
       });
       
       if (!response.ok) {
+        // Fallback to sounds folder with old format
+        const oldFormatNote = note.replace(/s(\d)/, '#$1').replace(/([a-g])(\d)/, (m, n, o) => n.toUpperCase() + o);
+        const fallbackUrl = `sounds/${oldFormatNote}.mp3`;
+        const fallbackResponse = await fetch(fallbackUrl);
+        if (fallbackResponse.ok) {
+          const arrayBuffer = await fallbackResponse.arrayBuffer();
+          const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+          audioBuffers[note] = audioBuffer;
+          audioBuffers[oldFormatNote] = audioBuffer; // Also cache with old format
+          console.log(`✓ Loaded (fallback): ${oldFormatNote}`);
+          return;
+        }
         console.warn(`Failed to preload: ${note}.mp3`);
         return;
       }
@@ -1442,29 +2110,45 @@ async function tryPlayNote(note) {
     await ctx.resume().catch(() => {});
   }
 
-  // Use preloaded buffer if available
-  let audioBuffer = audioBuffers[note];
+  // Convert note to acoustic_grand_piano format
+  const acousticNote = noteToAcousticPianoFormat(note);
+  
+  // Use preloaded buffer if available (try both formats)
+  let audioBuffer = audioBuffers[acousticNote] || audioBuffers[note];
   
   // If not preloaded yet, try to load it (fallback)
   if (!audioBuffer) {
     console.warn(`Audio not preloaded for ${note}, loading on demand...`);
     try {
-      const url = `sounds/${note}.mp3`;
-      const response = await fetch(url, {
+      // Try acoustic_grand_piano first
+      let url = `acoustic_grand_piano/${acousticNote}.mp3`;
+      let response = await fetch(url, {
         method: 'GET',
         headers: {
           'Accept': 'audio/mpeg, audio/*, */*'
         }
       });
       
+      // Fallback to sounds folder with old format
       if (!response.ok) {
-        console.error(`Failed to load audio: ${note}.mp3`);
+        url = `sounds/${note}.mp3`;
+        response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'audio/mpeg, audio/*, */*'
+          }
+        });
+      }
+      
+      if (!response.ok) {
+        console.error(`Failed to load audio: ${note}.mp3 or ${acousticNote}.mp3`);
         return;
       }
       
-  const arrayBuffer = await response.arrayBuffer();
+      const arrayBuffer = await response.arrayBuffer();
       audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      audioBuffers[note] = audioBuffer; // Cache it for next time
+      audioBuffers[acousticNote] = audioBuffer; // Cache with new format
+      audioBuffers[note] = audioBuffer; // Also cache with old format
     } catch (error) {
       console.error(`Error loading audio for ${note}:`, error);
       return;
@@ -2152,15 +2836,18 @@ function processImage() {
   blacks.forEach((k, i) => k.note = BLACK_NOTES[i] || `black${i}`);
 
   exportKeys = [...whites, ...blacks];
-  
+
   // Draw the detected keys
   drawAllKeys();
-  
+
+  // Update keyboard mapping for the detected keys
+  updateKeyboardMapping();
+
   // Show success message
   likeMask.textContent = "Keys Detected! ✓";
   likeMask.style.backgroundColor = '#4CAF50';
   likeMask.style.color = 'white';
-  
+
   setTimeout(() => {
     likeMask.textContent = "Like the mask? (2)";
     likeMask.style.backgroundColor = '';

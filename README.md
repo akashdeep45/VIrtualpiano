@@ -1,30 +1,29 @@
-# Paper Piano
+# Virtual Piano with Hand Tracking
 
-A web-based piano application that lets you play piano using your computer keyboard or mouse. This project is built with HTML, CSS, and JavaScript, and can be easily deployed to any static web hosting service.
+An interactive web-based piano application that lets you play using your computer keyboard, mouse, or hand gestures. This project combines traditional web technologies with computer vision for a unique musical experience.
 
-## Features
+## 🎹 Features
 
-- Play piano using your computer keyboard or mouse
+- Play piano using your computer keyboard, or hand gestures
+- Real-time hand tracking using MediaPipe
 - Responsive design that works on both desktop and mobile devices
-- Realistic piano sounds
-- Simple and intuitive interface
+- Multiple octaves with realistic piano sounds
+- Intuitive controls and user interface
+- No installation required - runs directly in the browser
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- A modern web browser (Chrome, Firefox, Safari, or Edge)
-- (Optional) Node.js and npm if you want to run a local development server
+- A modern web browser with WebRTC support (Chrome, Firefox, or Edge)
+- Webcam (for hand tracking feature)
+- (For local development) Python 3.x for running a local server
 
 ### Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/akashdeep45/paperpiano.git
-   cd paperpiano
-   ```
 
-2. Open `web_version/index.html` in your web browser
+
+2. Open `web_version/app.html` in your web browser
 
 ## Usage
 
