@@ -1,4 +1,4 @@
-# Virtual Piano with Hand Tracking
+# Virtual Piano with Hand Gesture Control
 
 An interactive web-based piano application that lets you play using your computer keyboard, mouse, or hand gestures. This project combines traditional web technologies with computer vision for a unique musical experience.
 
@@ -23,16 +23,15 @@ An interactive web-based piano application that lets you play using your compute
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/akashdeep45/paperpiano.git
-   cd paperpiano
+   git clone https://github.com/akashdeep45/virtual_piano_major_project4599525.git
+   cd virtual_piano_major_project4599525
    ```
-
-2. Open `web_version/index.html` in your web browser
+2. Open `web_version/app.html` in your web browser
 
 ## Usage
 
 - Use your computer keyboard keys (A, W, S, E, D, F, T, G, Y, H, U, J) to play notes
-- Or click on the piano keys with your mouse
+- Or virtual use like air piano
 
 ## Deployment
 

@@ -1756,10 +1756,6 @@ function updateKeyboardMapping() {
     const maxWhiteKeys = whiteKeys.length;
     const maxBlackKeys = blackKeys.length;
     console.log(`✅ Keyboard mapping updated: ${maxWhiteKeys} white keys, ${maxBlackKeys} black keys (interleaved)`);
-    console.log('Sample mappings:', sortedKeys.slice(0, 10).map((k, i) => {
-        const mappedKey = indexToKey[k.index] || '?';
-        return `${mappedKey}→${k.note}`;
-    }).join(', '));
 
     // Update keyboard help display
     updateKeyboardHelp(whiteKeys, blackKeys);
